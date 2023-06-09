@@ -1,11 +1,8 @@
-# West-Point
+# West-Point 
 
-<h2> 👋 Hey there! I'm Joey.</h2>
+##### -<ins>Summary</ins>: This repository contains projects I completed during my undergraduate studies at the United States Military Academy at West Point.
+##### -<ins>Degree</ins>: BS Mathematical Sciences (Minor: Cybersecurity)
+##### -<ins>GPA</ins>: 4.15 (4.18 Math)
+##### -<ins>Thesis</ins>: "Measuring the Effect of Writing Center Visits on Student Performance"
 
-<h3> 👨🏻‍💻 &nbsp;About Me </h3>
-
-- 🤔 &nbsp; Exploring applications of data science within the field of cybersecurity.
-- 🎓 &nbsp; Graduate of the United States Military Academy at West Point (BS Mathematical Sciences) & Harvard SEAS (MS Data Science).
-- 💼 &nbsp; Working as a 1LT within US Army Cyber Command.
-- 🌱 &nbsp; Learning more about Network Engineering.
-- ✍️ &nbsp; Pursuing Sports Analytics & CrossFit as hobbies/side hustles.
+<img src="https://www.armytimes.com/resizer/HiM5LL2nAUv1pKoF_WoQvjJewSI=/1024x0/filters:format(jpg):quality(70)/cloudfront-us-east-1.images.arcpublishing.com/archetype/A2J7HRJTCVD77DBABMYNZBY2CM.jpg" alt="West Point logo" style="height: 100px; width:100px;"/>

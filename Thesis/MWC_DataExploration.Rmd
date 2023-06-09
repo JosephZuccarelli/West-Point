@@ -1,0 +1,599 @@
+---
+title: "MWC Data Exploration"
+author: "Joseph Zuccarelli"
+date: "10/27/2020"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(table1)
+library(knitr)
+library(TriMatch)
+library(rbounds)
+```
+
+### Datasets
+Our first dataset is a collection of summary information such as sex, race, age, and standardized test scores for 6,737 cadets from the Class of 2018 to the Class of 2023.
+
+``` {r ANS1}
+#AMS Data
+AMSdata <- read.csv("AMSData_anonymous.csv")
+AMSdata %>%
+  head()
+```
+
+Our second dataset is a collection of 3,351 recorded grades for culminating writing assignments in core courses.
+``` {r ANS2}
+#SWE Data
+SWEdata <- read.csv("AMS SWE Data (anonymous - asof13Feb).csv")
+SWEdata %>%
+  filter(eventYear == 2020 | eventYear == 2019) %>%
+  head()
+```
+
+Our third dataset is a collection of 22,077 visitation records from the Mounger Writing Center. This dataset includes the date of each appointment and the course associated with the writing assignment reviewed during each appointment.
+``` {r ANS3}
+#MWC Data
+MWCdata <- read.csv("MWC_clients (asof13Feb).csv")
+MWCdata %>%
+  head()
+```
+
+Our fourth data set is a combination of the MWC data and the SWE data.
+``` {r ANS4}
+#MWC & SWE Data
+MWCcombinedSWEdata <- read.csv("combined_data.csv")
+MWCcombinedSWEdata %>%
+  head()
+```
+
+Our fifth data set is the combined data set along with imputed data concerning the subject.
+``` {r ANS5}
+#Imputed Data
+imputedDataOriginal <- read.csv("imputed_data.csv")
+imputedDataOriginal %>%
+  head()
+```
+
+Note that we are only concerned with three courses (and their advanced versions): English Composition, American History, and International Relations. We also do not want to include observations in which the event grade was a zero.
+``` {r ANS6}
+#Filtering by Course & Grade
+imputedDataFiltered <- imputedDataOriginal %>%
+  filter(courseCode == "EN101"|courseCode == "EN151"|courseCode == "HI105"|courseCode =="HI155"|courseCode =="SS307"|courseCode      =="SS357") %>%
+  filter(eventGrade > 0)
+```
+
+Note that we want to create a categorical variable representing the number of visits for the course by the client. This categorical level will have three levels ("None", "Once", "Multiple Times").
+``` {r ANS715}
+#Adding the categorical variable MWCvisits
+imputedDataFiltered <- imputedDataFiltered %>%
+  mutate(MWCvisits = ifelse(totalVisits == 0, "Never",
+                            ifelse(totalVisits == 1, "Once",
+                                   ifelse(totalVisits > 1, "Multiple Times", NA))))
+
+#Reorder levels
+imputedDataFiltered$modMWCvisits <- factor(imputedDataFiltered$MWCvisits, levels=c("Multiple Times","Once","Never"))
+```
+
+Note that we want to combine observations from the advanced and regular versions of the three courses involved in our study. We can assume that this will have no major effect, as both the advanced and regular versions of each course culminate with the same signature writing event.
+``` {r ANS725}
+#Combining observations from advanced and regular sessions
+imputedDataFiltered <- imputedDataFiltered %>%
+  mutate(course = ifelse(courseCode == "EN101" | courseCode == "EN151", "EN101/151",
+                            ifelse(courseCode == "HI105" | courseCode == "HI155", "HI105/155",
+                                   ifelse(courseCode == "SS307" | courseCode == "SS357", "SS307/357", NA))))
+```
+
+Note that we are curious as to how many cadets in the data set visited the MWC for more than one of the courses involved in the study, as this would affect the independence condition.
+``` {r ANS8}
+#Number of Course Visits by Subject
+courseVisitsDF <- imputedDataFiltered %>%
+  count(subjectID) %>%
+  arrange(desc(n)) %>%
+  rename(CourseVisits = n)
+
+courseVisitsDF
+```
+
+We see that multiple subjects are included in the data set more than once.
+``` {r ANS9}
+#Number of Subjects that visited for # different courses
+courseVisitsDF %>%
+  count(CourseVisits) %>%
+  arrange(desc(CourseVisits))
+```
+
+
+### Summary Information
+
+The following table displays the number of MWC visits by semester. Notice that each year more cadets are visiting the writing semester. Also notice that slightly more cadets tend to visit the writing center during first semester.
+``` {r ANS10}
+#MWC Visits by semester
+MWCvisitcountsem <- MWCcombinedSWEdata %>% 
+  group_by(semID) %>%
+  filter(semID == "2016-2" | semID == "2017-1" | semID == "2017-2" |semID == "2018-1" |semID == "2018-2" |semID == "2019-1" |semID   == "2019-2") %>%
+  filter(didAttend == 1) %>%
+  count() %>%
+  rename(visits = n)
+
+MWCvisitcountsem
+```
+
+
+``` {r ANS11}
+#MWC Visits by Semester
+MWCvisitcountsem %>% 
+  ggplot(aes(y=visits,x=semID)) + 
+  geom_bar(stat = 'identity') + 
+  labs(x = "Semester", y = "Visits") +
+  ggtitle("MWC Visits by Semester") +
+  theme_classic()
+```
+The following table indicates the total number of MWC visits by course. We see that the five most popular courses are English Composition, English Literature, American History, American Politics, and International Relations.
+``` {r AN12}
+#MWC Visits by course
+MWCvisitcountcourse <- MWCcombinedSWEdata %>% 
+  filter(courseCode != "NA") %>%
+  filter(didAttend == 1) %>%
+  group_by(courseCode) %>%
+  count(sort = TRUE) %>%
+  rename(visits = n)
+
+MWCvisitcountcourse
+```
+
+``` {r ANS13}
+#MWC Visits by Course
+MWCvisitcountcourse %>% 
+  filter(visits >= 10 ) %>%
+  ggplot(aes(y=visits,x=courseCode)) + 
+  geom_bar(stat = 'identity') + 
+  labs(x = "Course", y = "Visits") +
+  ggtitle("MWC Visits by Course (Minimum 10 Visits)") +
+  coord_flip() +
+  theme_classic()
+```
+
+### Preliminary Analysis
+
+The following table provides some demographic information concerning cadets from each attendance level. Note that the average event grade is higher for cadets who visited the writing center compared to those who did not. Also note that the average event grade is also slightly higher for cadets who visited the writing center multiple times compared to those who only visited the writing center once. 
+``` {r ANS14}
+#Table for Demographic Information
+table1(~eventGrade + sweGrade + race + sex + enterAge | as.factor(modMWCvisits),data = imputedDataFiltered)
+```
+
+We now perform several chi-squared tests and one-way ANOVA tests in order to examine the relationship between MWC visits and each of the covariates in the table.
+``` {r ANS15}
+#ANOVA Test (MWC Visits & Event Grade)
+linearModel1 <- lm(eventGrade ~ MWCvisits, data = imputedDataFiltered)
+interceptModel1 <- lm(eventGrade ~ 1, data = imputedDataFiltered)
+anova(linearModel1,interceptModel1)
+```
+P-value = 0.009732
+
+``` {r ANS16}
+#ANOVA Test (MWC Visits & SWE Grade)
+linearModel2 <- lm(sweGrade ~ MWCvisits, data = imputedDataFiltered)
+interceptModel2 <- lm(sweGrade ~ 1, data = imputedDataFiltered)
+anova(linearModel2,interceptModel2)
+```
+P-value = 0.9864
+
+``` {r ANS17}
+#Chi-squared Test (MWC Visits & Race)
+chisq.test(imputedDataFiltered$MWCvisits,imputedDataFiltered$race)
+```
+P-value = 0.04062
+
+``` {r ANS18}
+#Chi-squared Test (MWC Visits & Sex)
+chisq.test(imputedDataFiltered$MWCvisits,imputedDataFiltered$sex)
+```
+P-value = 0.00002334
+
+``` {r ANS151}
+#ANOVA Test (MWC Visits & Age)
+linearModel100 <- lm(enterAge ~ MWCvisits, data = imputedDataFiltered)
+interceptModel100 <- lm(enterAge ~ 1, data = imputedDataFiltered)
+anova(linearModel100,interceptModel100)
+```
+P-value = 0.71250
+
+The following table provides information regarding the standardized test scores across cadets from each attendance level. Note that most average scores were higher amongst cadets that never attended the writing center, perhaps contradicting our assumption that those with higher standardized test scores are more motivated and thus more likely to attend the writing center.
+``` {r ANS19}
+#Table for Standardized Test Scores
+table1(~satMath + satVrbl + satWrite + actComp + actEng + actMath + actRead + actWrite | as.factor(modMWCvisits),data = imputedDataFiltered)
+```
+
+We now perform several more one-way ANOVA tests in order to examine the relationship between MWC visits and each of the covariates in the table.
+``` {r ANS20}
+#ANOVA Test (MWC Visits & SAT Math)
+linearModel3 <- lm(satMath ~ MWCvisits, data = imputedDataFiltered)
+interceptModel3 <- lm(satMath ~ 1, data = imputedDataFiltered)
+anova(linearModel3,interceptModel3)
+```
+P-value = 0.4123
+
+``` {r ANS21}
+#ANOVA Test (MWC Visits & SAT Verbal)
+linearModel4 <- lm(satVrbl ~ MWCvisits, data = imputedDataFiltered)
+interceptModel4 <- lm(satVrbl ~ 1, data = imputedDataFiltered)
+anova(linearModel4,interceptModel4)
+```
+P-value = 0.6548
+
+``` {r ANS22}
+#ANOVA Test (MWC Visits & SAT Writing)
+linearModel5 <- lm(satWrite ~ MWCvisits, data = imputedDataFiltered)
+interceptModel5 <- lm(satWrite ~ 1, data = imputedDataFiltered)
+anova(linearModel5,interceptModel5)
+```
+P-value = 0.8491
+
+``` {r ANS23}
+#ANOVA Test (MWC Visits & ACT Composition)
+linearModel6 <- lm(actComp ~ MWCvisits, data = imputedDataFiltered)
+interceptModel6 <- lm(actComp ~ 1, data = imputedDataFiltered)
+anova(linearModel6,interceptModel6)
+```
+
+P-value = 0.9283
+
+``` {r ANS24}
+#ANOVA Test (MWC Visits & ACT English)
+linearModel7 <- lm(actEng ~ MWCvisits, data = imputedDataFiltered)
+interceptModel7 <- lm(actEng ~ 1, data = imputedDataFiltered)
+anova(linearModel7,interceptModel7)
+```
+P-value = 0.4165
+
+``` {r ANS25}
+#ANOVA Test (MWC Visits & ACT Math)
+linearModel8 <- lm(actMath ~ MWCvisits, data = imputedDataFiltered)
+interceptModel8 <- lm(actMath ~ 1, data = imputedDataFiltered)
+anova(linearModel8,interceptModel8)
+```
+P-value = 0.587
+
+``` {r ANS26}
+#ANOVA Test (MWC Visits & ACT Reading)
+linearModel9 <- lm(actRead ~ MWCvisits, data = imputedDataFiltered)
+interceptModel9 <- lm(actRead ~ 1, data = imputedDataFiltered)
+anova(linearModel9,interceptModel9)
+```
+P-value = 0.9316
+
+``` {r ANS27}
+#ANOVA Test (MWC Visits & ACT Writing)
+linearModel10 <- lm(actWrite ~ MWCvisits, data = imputedDataFiltered)
+interceptModel10 <- lm(actWrite ~ 1, data = imputedDataFiltered)
+anova(linearModel10,interceptModel10)
+```
+P-value = 0.8086
+
+The following plot displays the distribution of event grades conditional on the number of times students visited the MWC. We see that the median event grade slightly increases the more students visit the MWC.
+``` {r ANS28}
+#Event Grade Distributions Conditional on Number of MWC Visits
+imputedDataFiltered %>% 
+  ggplot(aes(y=eventGrade,x=modMWCvisits, fill=modMWCvisits)) + 
+  geom_boxplot() + 
+  labs(x = "MWC Visits", y = "Event Grade", fill = "MWC Visits") +
+  ggtitle("Event Grade Distributions Conditional on Number of MWC Visits")
+```
+
+The following plot displays the distribution of event grades conditional on the number of times students visited the MWC by course. 
+``` {r ANS29}
+#Event Grade Distributions Conditional on Number of MWC Visits by Course
+imputedDataFiltered %>% 
+  ggplot(aes(y=eventGrade,x=modMWCvisits, fill=course)) + 
+  geom_boxplot() + 
+  labs(x = "MWC Visits", y = "Event Grade", fill = "Course") +
+  ggtitle("Event Grade Distributions Conditional on Number of MWC Visits by Course")
+```
+
+### Propensity Score Matching
+
+The following table displays the amount of observations per treatment by course. The courses represented here are structured such that the variation from section-to-section is minimal. However, the differences between courses is substantial and therefore we will utilize partial exact matching so that all matched students will have taken the same course.
+
+``` {r ANS30}
+#Subjects by Treatment
+table(imputedDataFiltered$modMWCvisits, useNA = "ifany")
+```
+
+``` {r ANS31}
+#Subjects by Course
+table(imputedDataFiltered$modMWCvisits, imputedDataFiltered$course, useNA = "ifany")
+```
+
+The first step of this analysis is to estimate the propensity scores. The trips function will estimate three propensity score models (PS1, PS2, PS3) as described below. Note that when specifying the formula the dependent variable, or treatment indicator, is not included. The trips function will replace the dependent variable as it estimates the three logistic regression models.
+``` {r ANS32}
+#Estimating the propensity scores for the three models
+formu <- ~ sex + enterAge + race + CEER + satMath + satVrbl + satWrite + actComp + actEng + actMath + actRead + actWrite
+visits.tpsa <- trips(imputedDataFiltered, imputedDataFiltered$modMWCvisits, formu)
+```
+
+``` {r ANS33}
+#Combined summary of the three logistic regression models
+summary(visits.tpsa)
+```
+
+The following figure is a triangle plot that depicts the propensity scores from the three models. Since each student has two propensity scores, their scores are connected with a line.
+``` {r ANS34}
+#Triangle Plot
+plot(visits.tpsa, sample = c(200))
+```
+
+The default for trimatch is to use the maximumTreat method retaining each treatment subject once with those who visited once matched more than once only if the corresponding person who visited multiple times would not be matched otherwise. In the cases below we will use exact matching on the course.
+``` {r ANS35}
+#Default maximumTreat Matching
+visits.matched <- trimatch(visits.tpsa, exact = imputedDataFiltered[,c("course")])
+```
+
+Setting the method parameter to NULL will result in caliper matching. All matched triplets within the specified caliper are retained. This will result in the largest number of matched triplets.
+``` {r ANS36}
+#Caliper Matching
+visits.matched.caliper <- trimatch(visits.tpsa, exact = imputedDataFiltered[,c("course")], method = NULL)
+```
+
+Lastly, we will use the OneToN method to retain a 2-to-1-to-n and 3-to-2-n matches.
+``` {r ANS37}
+#2-to-1-to-1 Matching
+visits.matched.2to1 <- trimatch(visits.tpsa, exact = imputedDataFiltered[,c("course")], method = OneToN, M1 = 2, M2 = 1)
+```
+
+``` {r ANS38}
+#3-to-2-to-1 Matching
+visits.matched.3to2 <- trimatch(visits.tpsa, exact = imputedDataFiltered[,c("course")], method = OneToN, M1 = 3, M2 = 2)
+```
+
+## Examining Unmatched Students
+
+The different methods for retaining matched triplets addresses the issue of overrepresentation of treatment units. These methods fall on a spectrum where each treatment unit is used minimally (maximumTreat method) or all units are used (caliper matching). Rosenbaum (2012) suggests testing hypotheses more than once and using multiple methods. Functions to help present and compare the results from multiple methods are provided and discussed below.
+
+The unmatched function will return the rows of students who were not matched. The summary function will provide information about how many students within each group were not matched. As indicated below, the caliper matching will match the most students.
+``` {r ANS39}
+#Unmatched using maximumTreat Matching Method
+summary(unmatched(visits.matched))
+```
+
+``` {r ANS40}
+#Unmatched using Caliper Matching Method
+summary(unmatched(visits.matched.caliper))
+```
+
+``` {r ANS41}
+#Unmatched using 2to1 Matching Method
+summary(unmatched(visits.matched.2to1))
+```
+
+``` {r ANS42}
+#Unmatched using 3to2 Matching Method
+summary(unmatched(visits.matched.3to2))
+```
+
+We can overlay matched triplets on the triangle plot.
+``` {r ANS43}
+#Triangle Plot
+plot(visits.matched, rows=c(1), line.alpha=1, draw.segments=TRUE)
+```
+
+## Checking Balance
+
+The eventual strength of propensity score methods is dependent on how well balance is achieved. Helmreich and Pruzek (2009) introduced graphical approaches to evaluating balance. We now provide functions that extend that framework to matching of the three groups. The following figure is a multiple covariate balance plot that plots the absolute effect size of each covariate before and after adjustment. 
+``` {r ANS44}
+#Multiple Covariate Balance Plot
+#multibalance.plot(visits.tpsa) + 
+ #ggtitle("Covariate Balance Plot")
+```
+
+The following figure is the results of the balance.plot function. This function will provide a bar chart for categorical covariates and box plots for quantitative covariates, individually or in a grid.
+``` {r ANS45}
+#Grid of Balance Plots
+bplots <- balance.plot(visits.matched, imputedDataFiltered[,all.vars(formu)],
+                       legend.position = 'none', x.axis.labels = c('M','O','N'), x.axis.angle = 0)
+
+plot(bplots, cols = 3, byrow = FALSE)
+```
+
+## Estimating Effects of Visits on Student Grades
+
+In this section we seek to compare our outcome of interest, event grade, across the matches. A custom merge function is provided to merge an outcome from the original data frame to the results of trimatch. This merge function will add three columns with the outcome for each of the three groups
+``` {r ANS47}
+#Merging outcome from the original df and the results of trimatch
+matched.out <- merge(visits.matched, imputedDataFiltered$eventGrade)
+head(matched.out)
+```
+
+Although the merge function is convenient for conducting one's own analysis, the summary function will perform the most common analyses including Friedman Rank Sum test and the repeated measures ANOVA. If either of those tests produce a p-value less than the specified threshold of 0.05 by default, then the summary function will also perform and return the Wilcoxon signed rank test and three separate dependent sample t-tests (see Austin [2010] for discussion of dependent versus independent t-tests).
+
+# Default Matching Model
+``` {r ANS48}
+#Summary output from default matching model
+s1 <- summary(visits.matched, imputedDataFiltered$eventGrade)
+```
+
+``` {r ANS49}
+#Percent matched from default matching model
+s1$PercentMatched
+```
+
+``` {r ANS50}
+#Friedman Test from default matching model
+s1$friedman.test
+```
+
+``` {r ANS51}
+#ANOVA from default matching model
+s1$rmanova
+```
+Note that for this model we do not meet the threshold with a p-value greater than 0.05, and therefore the summary function does not return the Wilcoxon signed rank test and three separate dependent sample t-tests.  
+
+
+# Caliper Matching Model
+``` {r ANS52}
+#Summary output from caliper matching model
+s2 <- summary(visits.matched.caliper, imputedDataFiltered$eventGrade)
+```
+
+``` {r ANS53}
+#Percent matched from caliper matching model
+s2$PercentMatched
+```
+
+``` {r ANS54}
+#Friedman Test from caliper matching model
+s2$friedman.test
+````` {r ANS55}
+#ANOVA from caliper matching model
+s2$rmanova
+````
+
+
+
+``` {r ANS56}
+#Pairwise Wilcox Test from caliper matching model
+s2$pairwise.wilcox.test
+```
+
+``` {r ANS57}
+#T-tests from caliper matching model
+s2$t.tests
+```
+Note that for this model we do meet the threshold with a p-value less than 0.05, and therefore the summary function does  return the Wilcoxon signed rank test and three separate dependent sample t-tests.  
+
+
+# 2-to-1 Model
+``` {r ANS58}
+#Summary output from 2-to-1 matching model
+s3 <- summary(visits.matched.2to1, imputedDataFiltered$eventGrade)
+```
+
+``` {r ANS59}
+#Percent matched from 2-to-1 matching model
+s3$PercentMatched
+```
+
+``` {r ANS60}
+#Friedman Test from 2-to-1 matching model
+s3$friedman.test
+```
+
+``` {r ANS61}
+#ANOVA from 2-to-1 matching model
+s3$rmanova
+```
+Note that for this model we do not meet the threshold with a p-value greater than 0.05, and therefore the summary function does not return the Wilcoxon signed rank test and three separate dependent sample t-tests.  
+
+
+# 3-to-2 Model
+``` {r ANS62}
+#Summary output from 3-to-2 matching model
+s4 <- summary(visits.matched.3to2, imputedDataFiltered$eventGrade)
+```
+
+``` {r ANS63}
+#Percent matched from 3-to-2  matching model
+s4$PercentMatched
+```
+
+``` {r ANS64}
+#Friedman Test from 3-to-2 matching model
+s4$friedman.test
+```
+
+``` {r ANS65}
+#ANOVA from 3-to-2  matching model
+s4$rmanova
+```
+Note that for this model we do not meet the threshold with a p-value greater than 0.05, and therefore the summary function does not return the Wilcoxon signed rank test and three separate dependent sample t-tests.  
+
+## Loess Plots
+
+Another useful visualization for presenting the results is the Loess plot. In the figures below we plot the propensity scores on the x-axis and the outcome (grade) on the y-axis. A Loess regression line is then overlaid. Since there are three propensity scorescales, the plot.loess3 function will use the propensity scores from the model predicting
+treatment one (once) from treatment two (multiple times). Propensity scores for the control group (never) are then imputed by taking the mean of the propensity scores of the two treatment units that control was matched to. It should be noted that if a control unit is matched to two different sets of treatment units, then that control unit will have two propensity scores. Which propensity score scale is utilized can be explicitly specified using the model parameter.
+
+# Default Method
+
+``` {r ANS66}
+#Loess Plot Default Method
+loess3.plot(visits.matched, imputedDataFiltered$eventGrade, ylab='Grade')
+```
+
+``` {r ANS67}
+# Draw lines connecting each matched triplet
+loess3.plot(visits.matched, imputedDataFiltered$eventGrade, ylab='Grade', points.alpha=.5, plot.connections=TRUE)
+```
+
+# Caliper Method
+``` {r ANS68}
+#Loess Plot for the Caliper Matching Method
+loess3.plot(visits.matched.caliper, imputedDataFiltered$eventGrade, ylab='Grade', points.alpha=.1, method='loess')
+```
+
+# 2-to-1 Method
+``` {r ANS69}
+#Loess Plot for the 2-to-1 Matching Method
+loess3.plot(visits.matched.2to1, imputedDataFiltered$eventGrade, ylab='Grade', span=.9)
+```
+
+# 3-to-2 Method
+``` {r ANS70}
+#Loess plot for the 3-to-2 Matching Method
+loess3.plot(visits.matched.3to2, imputedDataFiltered$eventGrade, ylab='Grade', span=.9)
+```
+
+# Boxplot of Differences
+
+``` {r ANS71}
+#Boxplot of Differences Optimal Matching Method
+boxdiff.plot(visits.matched, imputedDataFiltered$eventGrade, 
+             ordering=c('Multiple Times','Once','Never')) + 
+  ggtitle('Boxplot of Differences: Optimal Matching')
+```
+
+``` {r ANS72}
+#Boxplot of Differences Caliper Matching Method
+boxdiff.plot(visits.matched.caliper, imputedDataFiltered$eventGrade, 
+             ordering=c('Multiple Times','Once','Never')) + 
+  ggtitle('Boxplot of Differences: Caliper Matching')
+```
+
+``` {r ANS73}
+#Boxplot of Differences 2-to-1-to-n Matching
+boxdiff.plot(visits.matched.2to1, imputedDataFiltered$eventGrade, 
+             ordering=c('Multiple Times','Once','Never')) + 
+  ggtitle('Boxplot of Differences: 2-to-1-to-n Matching')
+```
+
+``` {r ANS74}
+#Boxplot of Differences 3-to-2-to-n Matching
+boxdiff.plot(visits.matched.3to2, imputedDataFiltered$eventGrade, 
+             ordering=c('Multiple Times','Once','Never')) + 
+  ggtitle('Boxplot of Differences: 3-to-2-to-n Matching')
+```
+
+``` {r ANS75}
+#Summary
+print(print('Optimal'=s1, 'Caliper'=s2, '2-to-1'=s3, '3-to-2'=s4), row.names=FALSE)
+```
+
+## Sensitivity Analysis
+
+``` {r ANS76}
+psens(matched.out$Once.out, matched.out$Never.out, Gamma=2, GammaInc=0.1)
+```
+
+``` {r ANS77}
+matched.out <- matched.out %>%
+  rename('Multiple_Times.out' = 'Multiple Times.out')
+psens(matched.out$Multiple_Times.out, matched.out$Never.out, Gamma=2, GammaInc=0.1)
+```
+
+``` {r ANS78}
+psens(matched.out$Once.out, matched.out$Multiple_Times.out, Gamma=2, GammaInc=0.1)
+```

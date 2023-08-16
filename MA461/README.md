@@ -1,1 +1,4 @@
+# MA461: Graph Theory and Networks
 
+##### -<ins>Course Description</ins>: This course introduces the student to the techniques, algorithms, and structures used in graph theory and network flows in order to solve real world discrete optimization problems. Basic definitions relating to graphs and digraphs, together with a large number of examples and applications are provided. Cadets learn to implement new graph theory techniques in their area of study. Emphasis is on modeling, algorithms, and optimization.
+##### -<ins>Project</ins>: What is the best route home from the Army Navy Game in Philadelphia to Thayer Gate at West Point if you want to depart the city of brotherly love following the game as late as possible? The travel cost for each team member must be at most $45.00. Solve the problem for two options: travel by (rental) car or travel by public transport.  
